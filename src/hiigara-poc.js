@@ -65,7 +65,6 @@ Hiigara._setupControls = function() {
     controls.panSpeed = 5.0;
     controls.noZoom = false;
     controls.noPan = false;
-    controls.noRoll = true;
     controls.staticMoving = true;
     controls.dynamicDampingFactor = 0.3;
 
