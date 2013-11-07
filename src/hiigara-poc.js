@@ -19,102 +19,119 @@
 
 
 HIIGARA_CONFIG = {
-    fov: 90,
+    fov: 75,
+    fog_min: 150,
+    fog_max: 250,
+    // fog_color: 0xDFDFDF,
+    fog_color: 0x00,
 };
 
-Hiigara = {};
-
-Hiigara.init = function() {
-    this._boxes = [];
-    this._boxCount = 0;
-    this._gl = CubicVR.init();
-    this._canvas = CubicVR.getCanvas();
-    this._scene = this._setupScene(this._canvas);
-    this._setupControls(this._canvas, this._scene);
-
-    var box = this.fillScene();
-
-
-
-    CubicVR.MainLoop(this.renderLoop);
+Hiigara = {
+    GFX: {},
+    PHYSICS: {},
+    AI: {},
+    LOGIC: {},
 };
 
-Hiigara.renderLoop = function(timer, gl) {
-    if(!timer.locked()) {
-        timer.lockFramerate(30.0);
-    }
-
-    Hiigara._boxes.forEach(function(v, i, a) {
-        v.position.forEach(function(v2, i2, a2) {
-            if(a2[i2] < 10.0) {
-                a2[i2] += a2[i2] * 0.01;
-            }
-        });
-    });
-
-    Hiigara._scene.render();
-};
-
-Hiigara._setupScene = function(canvas) {
-    var scene = new CubicVR.Scene(canvas.width, canvas.height, HIIGARA_CONFIG.fov);
-    CubicVR.addResizeable(scene);
-    scene.camera.position = [10, 10, 12];
-    scene.camera.target = [0, 0, 0];
+Hiigara._setupScene = function() {
+    var scene = new THREE.Scene();
+    scene.fog = new THREE.Fog( HIIGARA_CONFIG.fog_color, HIIGARA_CONFIG.fog_min,
+        HIIGARA_CONFIG.fog_max );
     return scene;
 };
 
-Hiigara._setupControls = function(canvas, scene) {
-    var kbd = CubicVR.keyboard;
-    var mvc = new CubicVR.MouseViewController(canvas, scene.camera);
+Hiigara._setupCamera = function() {
+    var cam = new THREE.PerspectiveCamera(HIIGARA_CONFIG.fov,
+        window.innerWidth / window.innerHeight,
+        0.1, 1000 );
+    return cam;
 };
 
-Hiigara._createBox = function(size, pos) {
-    var boxTexture = new CubicVR.TextTexture(["Box #", this._boxes.length],
-    {
-        color: "#000",
-        bgcolor: "#fff",
-        align: "center",
+Hiigara._setupRenderer = function() {
+    var rndr = new THREE.WebGLRenderer({
+        canvas: $("#hiigara_canvas")[0],
+        precision: "highp",
+        antialias: true,
     });
-
-    var boxMesh = new CubicVR.Mesh({
-        primitive: {
-            type: "box",
-            size: size,
-            material: {
-                textures: {
-                    color: boxTexture,
-                },
-            },
-            uv: {
-                projectionMode: "cubic",
-                scale: [1, 1, 1],
-            },
-        },
-        compile: true,
-    });
-
-    var boxObject = new CubicVR.SceneObject(boxMesh);
-
-    boxObject.position = pos;
-
-    this._scene.bind(boxObject);
-    this._boxes.push(boxObject);
-
-    return boxObject;
+    rndr.setSize(window.innerWidth, window.innerHeight);
+    rndr.setClearColor(HIIGARA_CONFIG.fog_color, 1);
+    return rndr;
 };
 
-Hiigara.fillScene = function() {
-    this._scene.bind(new CubicVR.Light({
-        type: "point",
-        method: "dynamic",
-        position: [5.0, 5.0, -5.0],
-        distance: 20.0,
-        intensity: 2.0,
-    }));
+Hiigara._setupControls = function() {
+    var controls = new THREE.TrackballControls(this._camera);
+    controls.rotateSpeed = 2.0;
+    controls.zoomSpeed = 5.0;
+    controls.panSpeed = 5.0;
+    controls.noZoom = false;
+    controls.noPan = false;
+    controls.noRoll = true;
+    controls.staticMoving = true;
+    controls.dynamicDampingFactor = 0.3;
 
-    this._createBox(1.5, [0.0, 0.0, 4.0]);
-    this._createBox(0.5, [0.0, 3.0, 0.0]);
-    this._createBox(0.8, [2.0, 0.0, 0.0]);
-    this._createBox(1.0, [0.0, 0.0, 0.0]);
-    this._createBox(2.0, [2.0, 2.0, 2.0]);
+    return controls;
+}
+
+Hiigara.init = function() {
+    this._scene = this._setupScene();
+    this._camera = this._setupCamera();
+    this._renderer = this._setupRenderer();
+    this._controls = this._setupControls();
+
+    this.populateScene();
+
+    this._camera.position.x = 15;
+    this._camera.position.y = -15;
+    this._camera.position.z = 15;
+
+    Hiigara.render();
+};
+
+Hiigara.render = function() {
+    requestAnimationFrame(Hiigara.render);
+    Hiigara._renderer.render(Hiigara._scene, Hiigara._camera);
+    Hiigara._controls.update();
+};
+
+Hiigara.populateScene = function() {
+    var plight = new THREE.PointLight(0xff, 1, 100);
+    plight.position.set(0, 0, 0);
+    this._scene.add(plight);
+
+    var amLight = new THREE.AmbientLight(0x404040);
+    this._scene.add(amLight);
+
+    var ships = [];
+    for(var i = 0; i < 10; i++) {
+        ships.push(this._buildShip());
+    }
+    this._ships = ships;
+
+    this._scene.add(new THREE.Mesh(
+        new THREE.CircleGeometry(HIIGARA_CONFIG.fog_max,
+            HIIGARA_CONFIG.fog_max),
+        new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: 0.25,
+            color: 0x303030,
+            side: THREE.DoubleSide,
+        })));
+};
+
+Hiigara._buildShip = function() {
+    var geometry = new THREE.CubeGeometry(3, 1, 1);
+    var material = new THREE.MeshLambertMaterial({
+        color: THREE.Math.randInt(0x00, 0xFFFFFF),
+    });
+    // material.ambient = material.color;
+    var ship = new THREE.Mesh(geometry, material);
+    ship.position.set(
+        THREE.Math.randInt(0, 20)-10,
+        THREE.Math.randInt(0, 20)-10,
+        THREE.Math.randInt(0, 20)-10);
+    ship.castShadow = true;
+    ship.receiveShadow = true;
+
+    this._scene.add(ship);
+    return ship;
 };
